@@ -1,78 +1,142 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>PaddleOCRv5 Visualizer</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PaddleOCR Visualizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { font-family: Arial; text-align: center; padding: 20px; }
-    #outputImage { max-width: 90%; border: 2px solid #ccc; border-radius: 10px; margin-top: 20px; }
-    .bubble {
-      display: inline-block;
-      background: yellow;
-      color: black;
-      border-radius: 50%;
-      padding: 5px 10px;
-      margin: 3px;
+    .circle {
+      position: absolute;
+      border-radius: 9999px;
+      background: rgba(239, 68, 68, 0.8);
+      color: white;
+      font-weight: 700;
+      text-align: center;
+      line-height: 28px;
+      width: 28px;
+      height: 28px;
+      transform: translate(-50%, -50%);
       cursor: pointer;
-      font-weight: bold;
+      border: 2px solid white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      transition: transform 0.15s ease-in-out;
     }
-    #results { margin-top: 20px; text-align: left; display: inline-block; }
+    .circle:hover {
+      transform: scale(1.2) translate(-50%, -50%);
+      background: rgba(220, 38, 38, 0.9);
+    }
+    #overlayContainer {
+      position: relative;
+      display: inline-block;
+    }
   </style>
 </head>
-<body>
-  <h1>PaddleOCRv5 — Text Extraction with Visualization</h1>
-  <input type="file" id="fileInput" accept="image/*" />
-  <button onclick="upload()">Extract Text</button>
+<body class="bg-gray-50 min-h-screen flex flex-col items-center justify-center py-8">
+  <div class="w-full max-w-3xl bg-white rounded-2xl shadow-lg p-8">
+    <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">🧠 PaddleOCR Visualizer</h1>
+    <p class="text-center text-gray-500 mb-8">
+      Upload an image or PDF — it will extract the text and show numbered markers for each detected region.
+    </p>
 
-  <div id="loading" style="display:none;">⏳ Processing... please wait</div>
-  <div><img id="outputImage" /></div>
-  <div id="results"></div>
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+      <input type="file" id="fileInput" accept="image/*,.pdf"
+        class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none sm:w-auto" />
+      <button id="extractBtn"
+        class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 flex items-center gap-2">
+        🔍 Extract Text
+      </button>
+    </div>
+
+    <div id="loading" class="hidden text-center text-blue-600 font-medium mb-4 animate-pulse">
+      ⏳ Processing image... Please wait.
+    </div>
+
+    <div id="overlayContainer" class="flex justify-center mb-6">
+      <img id="preview" src="" alt="" class="rounded-xl shadow-md max-w-full hidden" />
+    </div>
+
+    <div id="outputText"
+      class="bg-gray-100 border border-gray-200 rounded-lg p-4 text-gray-700 text-sm whitespace-pre-wrap hidden">
+    </div>
+
+    <footer class="text-center text-xs text-gray-400 mt-6">
+      Built with ❤️ using PaddleOCR + FastAPI + Tailwind
+    </footer>
+  </div>
 
   <script>
-  async function upload() {
     const fileInput = document.getElementById('fileInput');
+    const extractBtn = document.getElementById('extractBtn');
+    const preview = document.getElementById('preview');
+    const overlayContainer = document.getElementById('overlayContainer');
+    const outputText = document.getElementById('outputText');
     const loading = document.getElementById('loading');
-    const outputImage = document.getElementById('outputImage');
-    const results = document.getElementById('results');
 
-    if (!fileInput.files.length) {
-      alert('Please select an image first!');
-      return;
-    }
+    let overlayData = [];
 
-    loading.style.display = 'block';
-    results.innerHTML = '';
-    outputImage.src = '';
+    extractBtn.addEventListener('click', async () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        alert('Please select an image or PDF first.');
+        return;
+      }
 
-    const formData = new FormData();
-    formData.append("data", fileInput.files[0]);
+      loading.classList.remove('hidden');
+      outputText.classList.add('hidden');
+      preview.classList.add('hidden');
+      overlayContainer.querySelectorAll('.circle').forEach(c => c.remove());
 
-    try {
-      const res = await fetch("https://diddid-ocr-visual.hf.space/run/predict", {
-        method: "POST",
-        body: formData
-      });
+      const formData = new FormData();
+      formData.append('file', file);
 
-      const json = await res.json();
-      const data = json.data[0]; // returned dict
+      try {
+        const response = await fetch('https://diddid-ocr-visual.hf.space/ocr', {
+          method: 'POST',
+          body: formData
+        });
 
-      if (!data) throw new Error("No data received");
+        const data = await response.json();
+        loading.classList.add('hidden');
 
-      // Display image
-      outputImage.src = `data:image/jpeg;base64,${data.image}`;
+        if (!data.success) {
+          outputText.textContent = '❌ Error: ' + (data.error || 'Unknown error');
+          outputText.classList.remove('hidden');
+          return;
+        }
 
-      // Display text items
-      let html = "<h3>Detected Texts:</h3>";
-      data.text.forEach(item => {
-        html += `<span class="bubble" onclick="alert('Text ${item.id}: ${item.text}')">${item.id}</span>`;
-      });
-      results.innerHTML = html;
-    } catch (e) {
-      alert("Error: " + e.message);
-    } finally {
-      loading.style.display = 'none';
-    }
-  }
+        overlayData = data.texts;
+
+        preview.src = 'data:image/jpeg;base64,' + data.overlay_image;
+        preview.classList.remove('hidden');
+        outputText.classList.remove('hidden');
+        outputText.textContent = '✅ Detected ' + overlayData.length + ' text regions.\nClick a number to view details.';
+
+        // Create interactive markers (random positions placeholder)
+        preview.onload = () => {
+          const rect = preview.getBoundingClientRect();
+          overlayContainer.querySelectorAll('.circle').forEach(c => c.remove());
+
+          overlayData.forEach((text, idx) => {
+            const circle = document.createElement('div');
+            circle.className = 'circle';
+            circle.textContent = idx + 1;
+            // temporary random scatter for visual interest
+            circle.style.left = `${Math.random() * rect.width}px`;
+            circle.style.top = `${Math.random() * rect.height}px`;
+
+            circle.addEventListener('click', () => {
+              outputText.textContent = `#${idx + 1}: ${text}`;
+            });
+            overlayContainer.appendChild(circle);
+          });
+        };
+      } catch (err) {
+        loading.classList.add('hidden');
+        outputText.textContent = '⚠️ Failed: ' + err.message;
+        outputText.classList.remove('hidden');
+      }
+    });
   </script>
 </body>
 </html>
