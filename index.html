@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PaddleOCRv5 Visualizer</title>
+  <style>
+    body { font-family: Arial; text-align: center; padding: 20px; }
+    #outputImage { max-width: 90%; border: 2px solid #ccc; border-radius: 10px; margin-top: 20px; }
+    .bubble {
+      display: inline-block;
+      background: yellow;
+      color: black;
+      border-radius: 50%;
+      padding: 5px 10px;
+      margin: 3px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #results { margin-top: 20px; text-align: left; display: inline-block; }
+  </style>
+</head>
+<body>
+  <h1>PaddleOCRv5 — Text Extraction with Visualization</h1>
+  <input type="file" id="fileInput" accept="image/*" />
+  <button onclick="upload()">Extract Text</button>
+
+  <div id="loading" style="display:none;">⏳ Processing... please wait</div>
+  <div><img id="outputImage" /></div>
+  <div id="results"></div>
+
+  <script>
+  async function upload() {
+    const fileInput = document.getElementById('fileInput');
+    const loading = document.getElementById('loading');
+    const outputImage = document.getElementById('outputImage');
+    const results = document.getElementById('results');
+
+    if (!fileInput.files.length) {
+      alert('Please select an image first!');
+      return;
+    }
+
+    loading.style.display = 'block';
+    results.innerHTML = '';
+    outputImage.src = '';
+
+    const formData = new FormData();
+    formData.append("data", fileInput.files[0]);
+
+    try {
+      const res = await fetch("https://diddid-ocr-visual.hf.space/run/predict", {
+        method: "POST",
+        body: formData
+      });
+
+      const json = await res.json();
+      const data = json.data[0]; // returned dict
+
+      if (!data) throw new Error("No data received");
+
+      // Display image
+      outputImage.src = `data:image/jpeg;base64,${data.image}`;
+
+      // Display text items
+      let html = "<h3>Detected Texts:</h3>";
+      data.text.forEach(item => {
+        html += `<span class="bubble" onclick="alert('Text ${item.id}: ${item.text}')">${item.id}</span>`;
+      });
+      results.innerHTML = html;
+    } catch (e) {
+      alert("Error: " + e.message);
+    } finally {
+      loading.style.display = 'none';
+    }
+  }
+  </script>
+</body>
+</html>
